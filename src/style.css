@@ -33,6 +33,85 @@ body {
   touch-action: none;
 }
 
+/* --- タッチ操作 UI (TouchInput が生成する) --- */
+
+.touch-controls {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 max(20px, env(safe-area-inset-left))
+    max(24px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-right));
+  /* 枠自体は指を素通りさせ、スティックとボタンだけが反応する */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* display: flex は hidden 属性より強いので、明示的に打ち消す */
+.touch-controls[hidden] {
+  display: none;
+}
+
+.touch-stick,
+.touch-button {
+  pointer-events: auto;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: var(--hud-bg);
+  backdrop-filter: blur(6px);
+  /* 長押しで出るコンテキストメニューやテキスト選択を抑える */
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+.touch-stick {
+  position: relative;
+  width: 132px;
+  height: 132px;
+}
+
+.touch-stick__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.touch-buttons {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.touch-button {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  color: var(--hud-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.touch-button--flap {
+  width: 104px;
+  height: 104px;
+}
+
+.touch-button.is-held {
+  background: rgba(120, 180, 255, 0.45);
+}
+
 #hud {
   position: fixed;
   top: max(8px, env(safe-area-inset-top));
