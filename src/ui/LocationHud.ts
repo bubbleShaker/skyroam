@@ -1,7 +1,7 @@
 import type { System } from "../core/System";
 import type { FlightStateSource } from "../flight/FlightState";
 import { formatLonLat, worldToLonLat } from "../world/geo";
-import type { Landmass } from "../world/landmass";
+import type { TerrainQuery } from "../world/landmass";
 import type { Hud } from "./Hud";
 
 /**
@@ -16,7 +16,7 @@ export class LocationHud implements System {
 
   constructor(
     private readonly target: FlightStateSource,
-    private readonly landmass: Landmass,
+    private readonly terrain: TerrainQuery,
     private readonly hud: Hud,
   ) {}
 
@@ -37,11 +37,11 @@ export class LocationHud implements System {
 
     // 範囲外を「海」と一括りにすると、データが欠けているのか本当に外洋なのかが
     // 分からなくなる。開発中に効くので、ここでは区別して出す
-    const terrain = !this.landmass.covers(position)
+    const label = !this.terrain.covers(position)
       ? "範囲外"
-      : this.landmass.isLand(position)
+      : this.terrain.isLand(position)
         ? "陸上"
         : "海上";
-    this.hud.set("terrain", terrain);
+    this.hud.set("terrain", label);
   }
 }

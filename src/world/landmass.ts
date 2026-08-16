@@ -1,4 +1,4 @@
-import { lonLatToWorld, type LonLat, type WorldXZ } from "./geo";
+import type { LonLat } from "./geo";
 
 /**
  * 陸地ポリゴンの保持と陸/海の判定。
@@ -20,11 +20,32 @@ export type Ring = readonly number[];
 /** 外周リングが先頭、以降は穴（湖など） */
 export type PolygonRings = readonly Ring[];
 
-/** build-landmass.mjs が出力する JSON の形 */
+/**
+ * build-landmass.mjs が出力する JSON の形。**まだ検査されていない入力**。
+ *
+ * JSON から来る以上、型はコンパイル時の当てにならない（要素数も中身も約束できない）。
+ * タプル型にして `as` で押し込むより、境界である `Landmass` の
+ * コンストラクタで実際に検査する方を選んだ。おかげで eastAsia.ts に
+ * キャストが 1 つも要らない。
+ */
 export interface LandmassSource {
   /** データが覆う範囲 `[minLon, minLat, maxLon, maxLat]` */
   readonly bbox: readonly number[];
   readonly polygons: readonly PolygonRings[];
+}
+
+/**
+ * 地形への問い合わせ口。
+ *
+ * `FlightStateSource` と同じ役割で、UI から見た必要最小限だけを切り出してある。
+ * HUD が要るのはこの 2 つだけで、ポリゴンの持ち方は知る必要がない。
+ * M4 の着地判定や、将来ここが高さマップ実装に変わっても、UI 側は変わらない。
+ */
+export interface TerrainQuery {
+  /** データが覆う範囲内か */
+  covers(position: LonLat): boolean;
+  /** その緯度経度が陸地か */
+  isLand(position: LonLat): boolean;
 }
 
 export interface Bounds {
@@ -92,8 +113,12 @@ function crossings(ring: Ring, position: LonLat): number {
 /**
  * 全リングの交差回数の合計が奇数なら内側（even-odd 規則）。
  *
- * 穴の扱いに専用のコードが要らないのがこの規則の利点。湖の中の点は
- * 外周で 1 回、湖のリングでもう 1 回横切って偶数になり、自動的に「外」になる。
+ * 穴の扱いに専用のコードが要らないのがこの規則の利点。穴の中の点は
+ * 外周で 1 回、穴のリングでもう 1 回横切って偶数になり、自動的に「外」になる。
+ *
+ * ただし**現在のデータに穴は 1 つも無い**。Natural Earth の land レイヤは
+ * 内陸湖を穴として持たないため、琵琶湖のような湖は今は陸と判定される。
+ * 湖を入れるなら lakes レイヤを穴として合成する（M2 の積み残し）。
  */
 function containsPoint(polygon: IndexedPolygon, position: LonLat): boolean {
   if (!withinBounds(polygon.bounds, position)) return false;
@@ -102,20 +127,44 @@ function containsPoint(polygon: IndexedPolygon, position: LonLat): boolean {
   return total % 2 === 1;
 }
 
-export class Landmass {
+export class Landmass implements TerrainQuery {
   /** データが覆う範囲。ここより外は判定できない */
   readonly bounds: Bounds;
   /** bbox を前計算したポリゴン。M2-b の地形メッシュ生成もこれを読む */
   readonly polygons: readonly IndexedPolygon[];
 
+  /**
+   * @throws データが壊れている場合。
+   *
+   * 黙って受け入れないのは、この層の壊れ方が**静か**だから。bbox が欠ければ
+   * 全世界が範囲外になり、リング長が奇数なら経度と緯度が入れ替わって読まれる。
+   * どちらも例外を出さずに「陸が存在しない世界」になり、HUD を見るまで気づけない。
+   * JSON は `as LandmassSource` で型検査を迂回して入ってくるので、
+   * 境界であるここで実際に検査する必要がある。
+   */
   constructor(source: LandmassSource) {
-    const [minLon = 0, minLat = 0, maxLon = 0, maxLat = 0] = source.bbox;
+    const bbox = source.bbox;
+    if (!Array.isArray(bbox) || bbox.length !== 4 || !bbox.every(Number.isFinite)) {
+      throw new Error("陸地データの bbox が [minLon, minLat, maxLon, maxLat] ではありません");
+    }
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    if (minLon >= maxLon || minLat >= maxLat) {
+      throw new Error(`陸地データの bbox が反転しています: ${bbox.join(", ")}`);
+    }
     this.bounds = { minLon, minLat, maxLon, maxLat };
+
     this.polygons = source.polygons
       // 3 頂点未満のリングは面積を持たない。データ生成側でも落としているが、
       // 判定ループの中で毎回気にしなくて済むようここでも弾いておく
       .filter((rings) => (rings[0]?.length ?? 0) >= 6)
-      .map((rings) => ({ rings, bounds: ringBounds(rings[0]!) }));
+      .map((rings) => {
+        for (const ring of rings) {
+          if (ring.length % 2 !== 0) {
+            throw new Error(`リングの座標数が奇数です: ${ring.length}`);
+          }
+        }
+        return { rings, bounds: ringBounds(rings[0]!) };
+      });
   }
 
   /**
@@ -139,13 +188,4 @@ export class Landmass {
   covers(position: LonLat): boolean {
     return withinBounds(this.bounds, position);
   }
-}
-
-/** リングをワールド座標に投影する。地形メッシュ生成 (M2-b) と地図 (M7) が使う */
-export function ringToWorld(ring: Ring): WorldXZ[] {
-  const points: WorldXZ[] = [];
-  for (let i = 0; i < ring.length; i += 2) {
-    points.push(lonLatToWorld({ lon: ring[i]!, lat: ring[i + 1]! }));
-  }
-  return points;
 }

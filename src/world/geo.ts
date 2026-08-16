@@ -36,7 +36,10 @@ export const ORIGIN: LonLat = { lon: 139.7671, lat: 35.6812 };
  */
 export const SCALE = 20;
 
-/** 緯度 1 度あたりの距離 (m)。WGS84 の平均値 */
+/**
+ * 緯度 1 度あたりの距離 (m)。WGS84 の**赤道での**値。
+ * 実際は極に向かって伸び、北緯 35 度では約 110,900m になる（0.3% の差）。
+ */
 const METERS_PER_LAT_DEGREE = 110_574;
 /** 赤道上の経度 1 度あたりの距離 (m) */
 const METERS_PER_LON_DEGREE_AT_EQUATOR = 111_320;
@@ -55,9 +58,9 @@ const METERS_PER_LON_DEGREE =
   METERS_PER_LON_DEGREE_AT_EQUATOR * Math.cos(degToRad(ORIGIN.lat));
 
 /** 経度 1 度が何ワールドメートルに相当するか */
-export const WORLD_METERS_PER_LON_DEGREE = METERS_PER_LON_DEGREE / SCALE;
+const WORLD_METERS_PER_LON_DEGREE = METERS_PER_LON_DEGREE / SCALE;
 /** 緯度 1 度が何ワールドメートルに相当するか */
-export const WORLD_METERS_PER_LAT_DEGREE = METERS_PER_LAT_DEGREE / SCALE;
+const WORLD_METERS_PER_LAT_DEGREE = METERS_PER_LAT_DEGREE / SCALE;
 
 export function lonLatToWorld(position: LonLat): WorldXZ {
   return {
@@ -74,9 +77,19 @@ export function worldToLonLat(position: WorldXZ): LonLat {
   };
 }
 
-/** ワールド距離 (m) を実世界の距離 (m) に戻す。HUD や地図で使う */
-export function worldToRealMeters(worldMeters: number): number {
-  return worldMeters * SCALE;
+/**
+ * リング（平坦な `[lon, lat, ...]`）をまとめてワールド座標へ投影する。
+ * 地形メッシュ生成 (M2-b) と地図 (M7) が使う。
+ *
+ * 投影は geo.ts の責務なので、リングの持ち主である landmass.ts ではなくここに置く。
+ * 引数は素の数値配列なので、geo.ts が landmass.ts に依存することはない。
+ */
+export function ringToWorld(ring: readonly number[]): WorldXZ[] {
+  const points: WorldXZ[] = [];
+  for (let i = 0; i + 1 < ring.length; i += 2) {
+    points.push(lonLatToWorld({ lon: ring[i]!, lat: ring[i + 1]! }));
+  }
+  return points;
 }
 
 /**

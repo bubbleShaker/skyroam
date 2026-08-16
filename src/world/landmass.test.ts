@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Landmass, ringToWorld, type LandmassSource } from "./landmass";
-import { lonLatToWorld } from "./geo";
+import { Landmass, type LandmassSource } from "./landmass";
 
 /** 経度 0..10 / 緯度 0..10 の正方形の島 */
 const SQUARE = [0, 0, 10, 0, 10, 10, 0, 10];
@@ -65,15 +64,30 @@ describe("Landmass.isLand", () => {
   });
 });
 
-describe("ringToWorld", () => {
-  it("リングの各点を geo.ts と同じ規則で投影する", () => {
-    const points = ringToWorld([139.7671, 35.6812, 140.7671, 35.6812]);
-    expect(points).toHaveLength(2);
-    expect(points[0]!.x).toBeCloseTo(0, 6);
-    expect(points[0]!.z).toBeCloseTo(0, 6);
-    expect(points[1]!.x).toBeCloseTo(
-      lonLatToWorld({ lon: 140.7671, lat: 35.6812 }).x,
-      6,
-    );
+describe("壊れたデータを黙って受け入れない", () => {
+  // どの壊れ方も、例外を出さなければ「陸が存在しない世界」として静かに動く。
+  // JSON は as キャストで型検査を迂回して入ってくるので、ここが最後の砦になる
+
+  it("bbox の要素数が 4 でなければ落ちる", () => {
+    for (const bbox of [[], [1, 2], [1, 2, 3], [1, 2, 3, 4, 5]]) {
+      expect(() => landmassOf([[SQUARE]], bbox)).toThrow(/bbox/);
+    }
+  });
+
+  it("bbox に数値でないものが混ざれば落ちる", () => {
+    expect(() => landmassOf([[SQUARE]], [0, 0, NaN, 10])).toThrow(/bbox/);
+  });
+
+  it("bbox が反転していれば落ちる", () => {
+    expect(() => landmassOf([[SQUARE]], [10, 0, 0, 10])).toThrow(/反転/);
+    expect(() => landmassOf([[SQUARE]], [0, 10, 10, 0])).toThrow(/反転/);
+    // 幅ゼロも「どこも範囲内でない」ことになるので弾く
+    expect(() => landmassOf([[SQUARE]], [5, 0, 5, 10])).toThrow(/反転/);
+  });
+
+  it("リングの座標数が奇数なら落ちる", () => {
+    // 通すと経度と緯度が入れ替わって読まれ、例外も出ずに誤判定になる
+    expect(() => landmassOf([[[0, 0, 10, 0, 10, 10, 5]]])).toThrow(/奇数/);
+    expect(() => landmassOf([[SQUARE, [1, 1, 2, 2, 3]]])).toThrow(/奇数/);
   });
 });

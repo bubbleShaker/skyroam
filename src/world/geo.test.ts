@@ -3,9 +3,9 @@ import {
   formatLonLat,
   lonLatToWorld,
   ORIGIN,
+  ringToWorld,
   SCALE,
   worldToLonLat,
-  worldToRealMeters,
   type LonLat,
 } from "./geo";
 
@@ -21,6 +21,24 @@ function worldDistance(a: LonLat, b: LonLat): number {
   const pa = lonLatToWorld(a);
   const pb = lonLatToWorld(b);
   return Math.hypot(pa.x - pb.x, pa.z - pb.z);
+}
+
+/**
+ * 球面上の実距離 (m)。テストの中だけで使う「正解」。
+ *
+ * 投影の検算に投影の式を使うと同語反復になるので、独立した式で照らし合わせる。
+ * 定数の取り違え（cos を掛け忘れる、SCALE を二重に掛ける）も、
+ * 向きの誤り（南北の反転）も、この比較なら一度に捕まる。
+ */
+function haversineMeters(a: LonLat, b: LonLat): number {
+  const R = 6_371_008.8;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 describe("lonLatToWorld", () => {
@@ -90,22 +108,43 @@ describe("距離の圧縮", () => {
     expect(minutes).toBeLessThan(13);
   });
 
-  it("都市の遠近の順序が実際の地理と一致する", () => {
-    // 実距離は ウラジオストク 約 1,060km < ソウル 約 1,160km < 北京 約 2,100km
-    const toVladivostok = worldDistance(CITIES.tokyo, CITIES.vladivostok);
-    const toSeoul = worldDistance(CITIES.tokyo, CITIES.seoul);
-    const toBeijing = worldDistance(CITIES.tokyo, CITIES.beijing);
-    expect(toVladivostok).toBeLessThan(toSeoul);
-    expect(toSeoul).toBeLessThan(toBeijing);
+  it("東京からの距離が、球面上の実距離の 1/20 と 10% 以内で一致する", () => {
+    // 順序だけを見ると定数の取り違えを見逃す。実距離そのものと突き合わせる。
+    // 等距円筒近似なので原点から離れるほどずれるが、対象範囲では数 % に収まる
+    for (const [name, city] of Object.entries(CITIES)) {
+      if (name === "tokyo") continue;
+      const expected = haversineMeters(CITIES.tokyo, city) / SCALE;
+      const ratio = worldDistance(CITIES.tokyo, city) / expected;
+      expect(ratio, `${name} の距離比`).toBeGreaterThan(0.9);
+      expect(ratio, `${name} の距離比`).toBeLessThan(1.1);
+    }
   });
 
-  it("worldToRealMeters がワールド距離を実距離に戻す", () => {
-    const world = worldDistance(CITIES.tokyo, CITIES.seoul);
-    const realKm = worldToRealMeters(world) / 1000;
-    // 東京—ソウルの実測は約 1,160km
-    expect(realKm).toBeGreaterThan(1_050);
-    expect(realKm).toBeLessThan(1_270);
-    expect(worldToRealMeters(world)).toBeCloseTo(world * SCALE, 6);
+  it("原点から離れるほど東西方向が過大になる（近似の性質）", () => {
+    // この近似の限界を明示しておく。M7 で地図に距離を出す時はここを見ること。
+    // 北緯 50 度では実距離の 1.25 倍以上になる
+    const a = { lon: 140, lat: 50 };
+    const b = { lon: 145, lat: 50 };
+    const ratio = worldDistance(a, b) / (haversineMeters(a, b) / SCALE);
+    expect(ratio).toBeGreaterThan(1.2);
+  });
+});
+
+describe("ringToWorld", () => {
+  it("平坦な [lon, lat, ...] を lonLatToWorld と同じ規則で投影する", () => {
+    const points = ringToWorld([ORIGIN.lon, ORIGIN.lat, 140.7671, 36.6812]);
+    expect(points).toHaveLength(2);
+    expect(points[0]!.x).toBeCloseTo(0, 6);
+    expect(points[0]!.z).toBeCloseTo(0, 6);
+
+    const expected = lonLatToWorld({ lon: 140.7671, lat: 36.6812 });
+    expect(points[1]!.x).toBeCloseTo(expected.x, 6);
+    expect(points[1]!.z).toBeCloseTo(expected.z, 6);
+  });
+
+  it("端数の座標を無視する（対にならない末尾を読まない）", () => {
+    expect(ringToWorld([139, 35, 140])).toHaveLength(1);
+    expect(ringToWorld([])).toHaveLength(0);
   });
 });
 
@@ -118,5 +157,10 @@ describe("formatLonLat", () => {
 
   it("南緯・西経は符号ではなく S / W で出す", () => {
     expect(formatLonLat({ lon: -70.6, lat: -33.45 })).toBe("33.45S 70.60W");
+  });
+
+  it("桁数を指定できる", () => {
+    expect(formatLonLat(ORIGIN, 0)).toBe("36N 140E");
+    expect(formatLonLat(ORIGIN, 4)).toBe("35.6812N 139.7671E");
   });
 });

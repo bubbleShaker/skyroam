@@ -16,9 +16,10 @@
  * 入っており、丸ごと持つと数万点になる。bbox の外を落として初めて数十 KB に収まる。
  */
 
+import { createHash } from "node:crypto";
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -30,16 +31,22 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  */
 const BBOX = { minLon: 114, minLat: 20, maxLon: 152, maxLat: 55 };
 
+/**
+ * 入力元。`master` ではなく commit を固定してある。
+ *
+ * 追跡ブランチを指すと、上流が更新された時に同じコマンドから別の生成物が出て、
+ * 「なぜ海岸線が変わったのか」を後から辿れなくなる。
+ * 更新したい時は SHA を意図的に上げ、生成物の差分をレビューする。
+ */
+const SOURCE_COMMIT = "0b9a6ceb0a7032713abd9460ac1e995a9c60cd1e";
 const SOURCES = {
-  "50m":
-    "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/master/50m/physical/ne_50m_land.json",
-  "10m":
-    "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/master/10m/physical/ne_10m_land.json",
+  "50m": `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${SOURCE_COMMIT}/50m/physical/ne_50m_land.json`,
+  "10m": `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${SOURCE_COMMIT}/10m/physical/ne_10m_land.json`,
 };
 
 const DEFAULTS = {
   // 10m を採るのは、ゲームが始まる日本近海の形が 50m だと潰れるため。
-  // 50m: 33KB / 2,010 点、10m: 110KB / 6,663 点（gzip 後は 14KB と 41KB）。
+  // 現在の bbox では 50m: 35KB / 2.1k 点、10m: 116KB / 7.0k 点（gzip 後は 15KB と 41KB）。
   // Pages は gzip で配るので、41KB なら妥当な対価。
   resolution: "10m",
   /** Douglas–Peucker の許容誤差 (度)。0.01° ≒ 1.1km ≒ ワールドで 55m */
@@ -53,15 +60,28 @@ const DEFAULTS = {
 
 // ---------------------------------------------------------------- 引数
 
-function parseArgs(argv) {
+/** 数値として受け取るオプション。`--tolerance abc` を黙って通さないために明示する */
+const NUMERIC_OPTIONS = new Set(["tolerance", "minArea", "digits"]);
+
+export function parseArgs(argv) {
   const options = { ...DEFAULTS, input: null };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, "");
     const value = argv[i + 1];
     if (!key || value === undefined) throw new Error(`引数が不正: ${argv[i]}`);
-    if (!(key in options)) throw new Error(`未知のオプション: --${key}`);
-    const asNumber = Number(value);
-    options[key] = Number.isNaN(asNumber) ? value : asNumber;
+    // `in` は prototype も見るので --toString や --constructor が通ってしまう
+    if (!Object.hasOwn(options, key)) {
+      throw new Error(`未知のオプション: --${key}`);
+    }
+    if (NUMERIC_OPTIONS.has(key)) {
+      const asNumber = Number(value);
+      if (!Number.isFinite(asNumber)) {
+        throw new Error(`--${key} には数値を渡してください: ${value}`);
+      }
+      options[key] = asNumber;
+    } else {
+      options[key] = value;
+    }
   }
   return options;
 }
@@ -75,7 +95,8 @@ function parseArgs(argv) {
  * 凹んだ多角形では境界に沿った縮退辺が出ることがあるが、それは bbox の縁
  * （＝ワールドの端、プレイ範囲の外）に現れるだけなので許容する。
  */
-function clipRing(ring, bbox) {
+export function clipRing(ring, bbox) {
+  if (ring.length < 3) return [];
   const edges = [
     { inside: (p) => p[0] >= bbox.minLon, at: (a, b) => lerpX(a, b, bbox.minLon) },
     { inside: (p) => p[0] <= bbox.maxLon, at: (a, b) => lerpX(a, b, bbox.maxLon) },
@@ -131,7 +152,7 @@ function squaredDistanceToSegment(p, a, b) {
   return ex * ex + ey * ey;
 }
 
-function simplify(points, tolerance) {
+export function simplify(points, tolerance) {
   if (points.length <= 2) return points;
   const toleranceSquared = tolerance * tolerance;
   const keep = new Uint8Array(points.length);
@@ -166,7 +187,7 @@ function simplify(points, tolerance) {
 // ------------------------------------------------------------- リング
 
 /** 符号付き面積。絶対値を大きさの判定に使う */
-function signedArea(ring) {
+export function signedArea(ring) {
   let sum = 0;
   for (let i = 0; i < ring.length; i += 1) {
     const a = ring[i];
@@ -177,12 +198,11 @@ function signedArea(ring) {
 }
 
 /** GeoJSON のリングは末尾が始点と同じ。閉じる責任は描画側に持たせるので落とす */
-function openRing(ring) {
+export function openRing(ring) {
+  if (ring.length < 2) return ring;
   const last = ring[ring.length - 1];
   const first = ring[0];
-  if (ring.length > 1 && last[0] === first[0] && last[1] === first[1]) {
-    return ring.slice(0, -1);
-  }
+  if (last[0] === first[0] && last[1] === first[1]) return ring.slice(0, -1);
   return ring;
 }
 
@@ -194,25 +214,37 @@ function round(value, digits) {
 
 // --------------------------------------------------------------- 本体
 
-function* eachPolygon(geojson) {
-  for (const feature of geojson.features ?? []) {
-    const geometry = feature.geometry ?? feature;
-    if (geometry.type === "Polygon") yield geometry.coordinates;
-    else if (geometry.type === "MultiPolygon") yield* geometry.coordinates;
+/** GeoJSON の入れ子（FeatureCollection / GeometryCollection / 素の Geometry）を平らにする */
+function* eachPolygon(node) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node.features)) {
+    for (const feature of node.features) yield* eachPolygon(feature);
+  } else if (node.geometry) {
+    yield* eachPolygon(node.geometry);
+  } else if (Array.isArray(node.geometries)) {
+    for (const geometry of node.geometries) yield* eachPolygon(geometry);
+  } else if (node.type === "Polygon") {
+    yield node.coordinates;
+  } else if (node.type === "MultiPolygon") {
+    yield* node.coordinates;
   }
 }
 
-function build(geojson, options) {
+export function build(geojson, options) {
+  // クリップ範囲を引数で受ける。モジュール定数を直接読むと、
+  // 東アジアの座標を持ったテストデータでしか検査できなくなる
+  const bbox = options.bbox ?? BBOX;
   const polygons = [];
   let inputPoints = 0;
   let outputPoints = 0;
 
   for (const rings of eachPolygon(geojson)) {
-    const [outer, ...holes] = rings;
+    const [outer, ...holes] = rings ?? [];
+    if (!outer) continue;
     inputPoints += rings.reduce((sum, ring) => sum + ring.length, 0);
 
     const clippedOuter = simplify(
-      clipRing(openRing(outer), BBOX),
+      clipRing(openRing(outer), bbox),
       options.tolerance,
     );
     if (clippedOuter.length < 3) continue;
@@ -220,8 +252,10 @@ function build(geojson, options) {
 
     const kept = [clippedOuter];
     for (const hole of holes) {
-      const clipped = simplify(clipRing(openRing(hole), BBOX), options.tolerance);
-      // 穴は湖など。外周より小さい閾値で残す（湖が消えると海が陸に化ける）
+      const clipped = simplify(clipRing(openRing(hole), bbox), options.tolerance);
+      // 穴は外周と同じ閾値で残す。
+      // 現状 Natural Earth の land レイヤに穴は 1 つも無いので、この経路は通らない。
+      // 湖を海として扱いたくなったら lakes レイヤをここへ穴として合成する（M2 の積み残し）
       if (clipped.length >= 3 && Math.abs(signedArea(clipped)) >= options.minArea) {
         kept.push(clipped);
       }
@@ -242,45 +276,70 @@ function build(geojson, options) {
   return { polygons, inputPoints, outputPoints };
 }
 
+/** 入力の中身そのものを指紋にする。ローカルの --input でも同じ値が出る */
+function fingerprint(text) {
+  return `sha256:${createHash("sha256").update(text).digest("hex")}`;
+}
+
 async function loadSource(options) {
   if (options.input) {
-    return JSON.parse(readFileSync(resolve(options.input), "utf8"));
+    return readFileSync(resolve(options.input), "utf8");
   }
   const url = SOURCES[options.resolution];
   if (!url) throw new Error(`未知の解像度: ${options.resolution}`);
   console.log(`取得中: ${url}`);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`取得に失敗: HTTP ${response.status}`);
-  return response.json();
+  return response.text();
 }
 
-const options = parseArgs(process.argv.slice(2));
-const geojson = await loadSource(options);
-const { polygons, inputPoints, outputPoints } = build(geojson, options);
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const text = await loadSource(options);
+  const { polygons, inputPoints, outputPoints } = build(JSON.parse(text), options);
 
-const output = {
-  $comment:
-    "tools/build-landmass.mjs が生成。手で編集しない。Natural Earth (public domain) 由来",
-  source: `Natural Earth ${options.resolution} land`,
-  license: "public domain",
-  bbox: [BBOX.minLon, BBOX.minLat, BBOX.maxLon, BBOX.maxLat],
-  toleranceDeg: options.tolerance,
-  /** 外周リングが先頭、以降は穴。各リングは平坦な [lon, lat, ...] */
-  polygons,
-};
+  // 0 個で正常終了すると「世界が全部海」の JSON を静かに出荷することになる。
+  // GeoJSON の形が想定と違った時は、ここで気づけるようにする
+  if (polygons.length === 0) {
+    throw new Error("ポリゴンが 1 つも取れませんでした。入力の形式を確認してください");
+  }
 
-const outputPath = resolve(ROOT, options.output);
-mkdirSync(dirname(outputPath), { recursive: true });
-const json = JSON.stringify(output);
-writeFileSync(outputPath, `${json}\n`);
+  const output = {
+    $comment:
+      "tools/build-landmass.mjs が生成。手で編集しない。Natural Earth (public domain) 由来",
+    source: `Natural Earth ${options.resolution} land`,
+    sourceCommit: SOURCE_COMMIT,
+    // 生成物から入力を辿れるようにする。海岸線が変わった時に
+    // 「上流が変わったのか、こちらの設定を変えたのか」を切り分けられる
+    sourceSha256: fingerprint(text),
+    license: "public domain",
+    bbox: [BBOX.minLon, BBOX.minLat, BBOX.maxLon, BBOX.maxLat],
+    toleranceDeg: options.tolerance,
+    /** 外周リングが先頭、以降は穴。各リングは平坦な [lon, lat, ...] */
+    polygons,
+  };
 
-console.log(
-  [
-    `解像度       ${options.resolution}`,
-    `許容誤差     ${options.tolerance}° (≒ ${Math.round(options.tolerance * 111)}km)`,
-    `ポリゴン数   ${polygons.length}`,
-    `頂点数       ${inputPoints} → ${outputPoints}`,
-    `サイズ       ${(json.length / 1024).toFixed(1)} KB`,
-    `出力先       ${options.output}`,
-  ].join("\n"),
-);
+  const outputPath = resolve(ROOT, options.output);
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const json = JSON.stringify(output);
+  writeFileSync(outputPath, `${json}\n`);
+
+  console.log(
+    [
+      `解像度       ${options.resolution}`,
+      `許容誤差     ${options.tolerance}° (≒ ${Math.round(options.tolerance * 111)}km)`,
+      `ポリゴン数   ${polygons.length}`,
+      `頂点数       ${inputPoints} → ${outputPoints}`,
+      `サイズ       ${(json.length / 1024).toFixed(1)} KB`,
+      `入力指紋     ${output.sourceSha256}`,
+      `出力先       ${options.output}`,
+    ].join("\n"),
+  );
+}
+
+// 直接実行された時だけ走らせる。
+// トップレベルで実行していると、テストが import した瞬間に
+// ダウンロードとファイル書き込みが起きてしまい、純粋関数を検査できない
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}

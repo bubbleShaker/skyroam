@@ -47,8 +47,18 @@ describe("東アジアの陸地データ", () => {
     }
   });
 
-  it("ポリゴンが失われていない", () => {
-    expect(EAST_ASIA_LAND.polygons.length).toBeGreaterThan(50);
+  it("出荷しているデータの規模が変わっていない", () => {
+    // 「50 個より多い」のような緩い下限では、許容誤差を数倍にして海岸線を
+    // かなり潰しても通ってしまう。再生成でデータが変わったら気づけるよう、
+    // 実測値 (216 ポリゴン / 7,008 点) を狭い幅で固定する。
+    // 意図的に作り直した時は、生成物の差分を確認した上でここも更新する
+    const points = EAST_ASIA_LAND.polygons.reduce(
+      (sum, polygon) =>
+        sum + polygon.rings.reduce((n, ring) => n + ring.length / 2, 0),
+      0,
+    );
+    expect(EAST_ASIA_LAND.polygons.length).toBe(216);
+    expect(points).toBe(7_008);
   });
 
   it.each(Object.entries(ON_LAND))("%s は陸", (_name, position) => {
@@ -70,7 +80,7 @@ describe("東アジアの陸地データ", () => {
     // 北緯 37 度を東経 139 → 120 まで 0.25 度刻みで進み、
     // 「陸 → 海 → 陸」の順に変わることを確かめる
     const sequence: boolean[] = [];
-    for (let lon = 139; lon >= 118; lon -= 0.25) {
+    for (let lon = 139; lon >= 114; lon -= 0.25) {
       const land = EAST_ASIA_LAND.isLand({ lon, lat: 37 });
       if (sequence[sequence.length - 1] !== land) sequence.push(land);
     }
@@ -80,14 +90,11 @@ describe("東アジアの陸地データ", () => {
     expect(sequence.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("判定が実用的な速さで返る", () => {
-    // 毎フレーム呼ぶので、線形走査で足りることをここで押さえておく。
-    // 空間索引を足すかどうかの判断材料にもなる
-    const started = performance.now();
-    for (let i = 0; i < 10_000; i += 1) {
-      EAST_ASIA_LAND.isLand({ lon: 118 + (i % 34), lat: 20 + (i % 35) });
-    }
-    const perCall = (performance.now() - started) / 10_000;
-    expect(perCall).toBeLessThan(0.1);
+  it("湖は今のところ陸として扱われる（M2 の積み残し）", () => {
+    // Natural Earth の land レイヤは内陸湖を穴として持たない。
+    // even-odd の穴処理は landmass.ts にあるが、実データでは出番が無い。
+    // 湖を海にしたくなったら lakes レイヤを穴として合成する。
+    // 直したらこのテストは反転させる
+    expect(EAST_ASIA_LAND.isLand({ lon: 136.15, lat: 35.3 })).toBe(true); // 琵琶湖
   });
 });

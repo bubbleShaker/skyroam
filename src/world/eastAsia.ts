@@ -1,4 +1,4 @@
-import { Landmass, type LandmassSource } from "./landmass";
+import { Landmass } from "./landmass";
 import source from "./data/eastasia-land.json";
 
 /**
@@ -9,6 +9,9 @@ import source from "./data/eastasia-land.json";
  * 「実データが本当に日本や朝鮮半島の形になっているか」だけを見る。
  *
  * JSON はバンドルに同梱される（実行時にネットワークへ出ない）。
- * 原寸 110KB / gzip 41KB で、GitHub Pages は gzip で配る。
+ * 216 ポリゴン / 7,008 点、原寸 116KB / gzip 41KB で、GitHub Pages は gzip で配る。
+ *
+ * データが壊れていれば Landmass のコンストラクタが起動時に例外を投げる。
+ * 黙って「陸の無い世界」にはならない。
  */
-export const EAST_ASIA_LAND = new Landmass(source as LandmassSource);
+export const EAST_ASIA_LAND = new Landmass(source);
