@@ -5,14 +5,23 @@ import {
   Mesh,
   MeshLambertMaterial,
   PlaneGeometry,
-  type Scene,
 } from "three";
-import type { FrameContext, System } from "../core/System";
+import type { FrameContext, InitContext, System } from "../core/System";
 
-const GRID_SIZE = 4_000;
-const GRID_DIVISIONS = 80;
+/** 暫定地面の一辺 (m)。fog の距離を決める側もこの値を参照する */
+export const GROUND_SIZE = 8_000;
+const GRID_DIVISIONS = 160;
 /** グリッド 1 マスの一辺 (m)。カメラ追従の折り返し単位に使う */
-const CELL = GRID_SIZE / GRID_DIVISIONS;
+export const GROUND_CELL = GROUND_SIZE / GRID_DIVISIONS;
+
+/**
+ * 値を cell の整数倍に丸める。
+ * グリッドをカメラ直下へスナップさせ、有限のグリッドを無限に見せるために使う。
+ */
+export function snapToCell(value: number, cell: number = GROUND_CELL): number {
+  if (!Number.isFinite(value) || cell <= 0) return 0;
+  return Math.round(value / cell) * cell;
+}
 
 /**
  * M0 の暫定地面。M2 で実際の地形に置き換わる。
@@ -29,35 +38,40 @@ export class Ground implements System {
 
   constructor() {
     this.plane = new Mesh(
-      new PlaneGeometry(GRID_SIZE, GRID_SIZE),
+      new PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
       new MeshLambertMaterial({ color: new Color("#2f4a34") }),
     );
     this.plane.rotation.x = -Math.PI / 2;
     this.plane.receiveShadow = true;
 
     this.grid = new GridHelper(
-      GRID_SIZE,
+      GROUND_SIZE,
       GRID_DIVISIONS,
       new Color("#5d7a63"),
       new Color("#3d5744"),
     );
-    // グリッドが地面と同一平面だと z-fighting するのでわずかに浮かせる
-    this.grid.position.y = 0.05;
+    // 高さでずらすと遠方では深度分解能に埋もれて z-fighting する。
+    // polygonOffset は深度値そのものをずらすので距離に依らず効く。
+    const gridMaterials = Array.isArray(this.grid.material)
+      ? this.grid.material
+      : [this.grid.material];
+    for (const material of gridMaterials) {
+      material.polygonOffset = true;
+      material.polygonOffsetFactor = -1;
+      material.polygonOffsetUnits = -1;
+      material.depthWrite = false;
+    }
 
     this.group.add(this.plane, this.grid);
   }
 
-  init(ctx: { scene: Scene }): void {
+  init(ctx: InitContext): void {
     ctx.scene.add(this.group);
   }
 
-  update(ctx: FrameContext): void {
+  lateUpdate(ctx: FrameContext): void {
     const { x, z } = ctx.camera.position;
-    this.group.position.set(
-      Math.round(x / CELL) * CELL,
-      0,
-      Math.round(z / CELL) * CELL,
-    );
+    this.group.position.set(snapToCell(x), 0, snapToCell(z));
   }
 
   dispose(): void {

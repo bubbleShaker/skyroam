@@ -26,9 +26,12 @@
 ```bash
 npm install
 npm run dev        # 開発サーバ
+npm test           # ユニットテスト (vitest)
 npm run build      # 型チェック + 本番ビルド
 npm run typecheck  # 型チェックのみ
 ```
+
+PR を出すと GitHub Actions がテストとビルドを回す。`main` にマージされると Pages へ公開される。
 
 ## 構成
 

@@ -1,5 +1,5 @@
-import { Color, DirectionalLight, HemisphereLight, type Scene } from "three";
-import type { System } from "../core/System";
+import { Color, DirectionalLight, HemisphereLight } from "three";
+import type { InitContext, System } from "../core/System";
 
 /**
  * 太陽 (DirectionalLight) と環境光 (HemisphereLight)。
@@ -32,7 +32,7 @@ export class Lighting implements System {
     }
   }
 
-  init(ctx: { scene: Scene }): void {
+  init(ctx: InitContext): void {
     ctx.scene.add(this.sun, this.sun.target, this.ambient);
   }
 
