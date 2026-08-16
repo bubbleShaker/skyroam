@@ -9,6 +9,7 @@ import { Bird } from "./scene/Bird";
 import { ChaseCamera } from "./scene/ChaseCamera";
 import { Hud } from "./ui/Hud";
 import { FlightHud } from "./ui/FlightHud";
+import { ControlsOverlay } from "./ui/ControlsOverlay";
 
 function boot(hudElement: HTMLElement): void {
   const canvas = document.querySelector<HTMLCanvasElement>("#app");
@@ -42,7 +43,8 @@ function boot(hudElement: HTMLElement): void {
     .add(bird)
     .add(new ChaseCamera(bird))
     .add(new FlightHud(bird, hud))
-    .add(hud);
+    .add(hud)
+    .add(new ControlsOverlay());
 
   game.start();
 }
