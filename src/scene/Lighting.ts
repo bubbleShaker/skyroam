@@ -1,5 +1,5 @@
-import { Color, DirectionalLight, HemisphereLight } from "three";
-import type { InitContext, System } from "../core/System";
+import { Color, DirectionalLight, HemisphereLight, Vector3 } from "three";
+import type { FrameContext, InitContext, System } from "../core/System";
 
 /**
  * 太陽 (DirectionalLight) と環境光 (HemisphereLight)。
@@ -17,8 +17,11 @@ export class Lighting implements System {
     1.1,
   );
 
+  /** 太陽を光源として見た時の向き。位置はここを基準にカメラへ追従させる */
+  private readonly sunOffset = new Vector3(600, 900, 400);
+
   constructor(castShadow: boolean) {
-    this.sun.position.set(600, 900, 400);
+    this.sun.position.copy(this.sunOffset);
     this.sun.castShadow = castShadow;
     if (castShadow) {
       this.sun.shadow.mapSize.set(2048, 2048);
@@ -36,10 +39,30 @@ export class Lighting implements System {
     ctx.scene.add(this.sun, this.sun.target, this.ambient);
   }
 
+  /**
+   * 影を落とす範囲をカメラに追従させる。
+   *
+   * DirectionalLight は平行光なので、位置を動かしても照らされ方は変わらない。
+   * 動かす必要があるのは影を描く範囲（shadow.camera）の方で、原点に固定したままだと
+   * M1 で原点から離れて飛んだ瞬間に鳥の影が消える。
+   * y は 0 のままにして、太陽の向きは変えない（変えると影の方向が飛ぶたびに揺れる）。
+   */
+  lateUpdate(ctx: FrameContext): void {
+    const { x, z } = ctx.camera.position;
+    this.sun.target.position.set(x, 0, z);
+    this.sun.position.set(
+      x + this.sunOffset.x,
+      this.sunOffset.y,
+      z + this.sunOffset.z,
+    );
+  }
+
   dispose(): void {
     this.sun.dispose();
     this.ambient.dispose();
     this.sun.removeFromParent();
+    // target も init でシーンに足しているので、一緒に外さないと孤児として残る
+    this.sun.target.removeFromParent();
     this.ambient.removeFromParent();
   }
 }

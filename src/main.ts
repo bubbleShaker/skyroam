@@ -1,9 +1,15 @@
 import { Game } from "./core/Game";
+import { CompositeInput } from "./input/CompositeInput";
+import { KeyboardInput } from "./input/KeyboardInput";
+import { TouchInput } from "./input/TouchInput";
 import { Sky } from "./scene/Sky";
 import { Ground, GROUND_SIZE } from "./scene/Ground";
 import { Lighting } from "./scene/Lighting";
-import { DemoCamera } from "./scene/DemoCamera";
+import { Bird } from "./scene/Bird";
+import { ChaseCamera } from "./scene/ChaseCamera";
 import { Hud } from "./ui/Hud";
+import { FlightHud } from "./ui/FlightHud";
+import { ControlsOverlay } from "./ui/ControlsOverlay";
 
 function boot(hudElement: HTMLElement): void {
   const canvas = document.querySelector<HTMLCanvasElement>("#app");
@@ -12,9 +18,17 @@ function boot(hudElement: HTMLElement): void {
   const game = new Game(canvas);
 
   const hud = new Hud(hudElement);
-  hud.set("build", `skyroam M0 (${game.quality.tier})`);
+  hud.set("build", `skyroam M1 (${game.quality.tier})`);
+
+  // キーボードとタッチを常に両方生かす。端末で分岐しないので、
+  // タッチ対応ノート PC でもスマホ + キーボードでも両方の操作が効く。
+  const input = new CompositeInput(new KeyboardInput(), new TouchInput());
+  const bird = new Bird(input);
 
   game
+    // 入力源も System として登録する。毎フレームの更新は無いが、
+    // イベントリスナと DOM の破棄を Game のライフサイクルに任せられる。
+    .add(input)
     .add(
       new Sky({
         radius: game.quality.drawDistance * 0.9,
@@ -26,8 +40,14 @@ function boot(hudElement: HTMLElement): void {
     )
     .add(new Lighting(game.quality.shadows))
     .add(new Ground())
-    .add(new DemoCamera())
-    .add(hud);
+    // 登録順が意味を持つのはこの 3 つ。Bird が飛行状態を更新し、
+    // ChaseCamera がそれを見てカメラを動かし（ここまでが update フェーズ）、
+    // Sky と Ground は lateUpdate で確定後のカメラ位置に追従する。
+    .add(bird)
+    .add(new ChaseCamera(bird))
+    .add(new FlightHud(bird, hud))
+    .add(hud)
+    .add(new ControlsOverlay());
 
   game.start();
 }
