@@ -86,10 +86,11 @@ export class BirdMesh {
   update(phase: number, flapping: boolean): void {
     const swing = flapping ? FLAP_SWING : GLIDE_SWING;
     const angle = DIHEDRAL + swing * Math.sin(phase * Math.PI * 2);
-    // 左翼 (-x) と右翼 (+x) は同じ符号で回すと片方が上、片方が下になるので、
-    // 符号を反転させて左右対称に振る
-    this.leftWing.rotation.z = angle;
-    this.rightWing.rotation.z = -angle;
+    // rotation.z が + のとき、+x にある点は +y（上）へ回る。
+    // したがって右翼 (+x) は +angle で、左翼 (-x) は -angle で持ち上がる。
+    // 同じ符号を入れると片方が上がり片方が下がるので、左右で反転させる。
+    this.leftWing.rotation.z = -angle;
+    this.rightWing.rotation.z = angle;
   }
 
   dispose(): void {

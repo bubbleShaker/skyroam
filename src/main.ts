@@ -26,6 +26,9 @@ function boot(hudElement: HTMLElement): void {
   const bird = new Bird(input);
 
   game
+    // 入力源も System として登録する。毎フレームの更新は無いが、
+    // イベントリスナと DOM の破棄を Game のライフサイクルに任せられる。
+    .add(input)
     .add(
       new Sky({
         radius: game.quality.drawDistance * 0.9,

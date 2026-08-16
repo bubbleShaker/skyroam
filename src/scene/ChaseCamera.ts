@@ -1,8 +1,7 @@
 import { Vector3 } from "three";
 import { dampFactor } from "../core/math";
 import type { FrameContext, System } from "../core/System";
-import { forwardVector } from "../flight/FlightState";
-import type { Bird } from "./Bird";
+import { forwardVector, type FlightStateSource } from "../flight/FlightState";
 
 export interface ChaseCameraOptions {
   /** 静止時に鳥の後ろへ取る距離 (m) */
@@ -45,18 +44,18 @@ export const DEFAULT_CHASE_CAMERA: ChaseCameraOptions = {
 export class ChaseCamera implements System {
   readonly name = "chase-camera";
 
-  /** 毎フレームの new を避けるための作業用。使い回して GC を発生させない */
+  /** Vector3 の生成を毎フレーム繰り返さないための作業用 */
   private readonly desired = new Vector3();
   private readonly lookTarget = new Vector3();
   private snapped = false;
 
   constructor(
-    private readonly bird: Bird,
+    private readonly target: FlightStateSource,
     private readonly options: ChaseCameraOptions = DEFAULT_CHASE_CAMERA,
   ) {}
 
   update(ctx: FrameContext): void {
-    const { position, yaw, pitch, roll, speed } = this.bird.flight;
+    const { position, yaw, pitch, roll, speed } = this.target.flight;
     const { options } = this;
     const forward = forwardVector(yaw, pitch);
     const back = options.distance + speed * options.speedPull;

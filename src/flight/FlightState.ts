@@ -32,6 +32,18 @@ export interface FlightState {
   readonly stalling: boolean;
 }
 
+/**
+ * 飛行状態の読み出し口。
+ *
+ * カメラや HUD が必要としているのは「今の飛行状態が読めること」だけで、
+ * それが鳥なのか（M4 以降の）歩行中のプレイヤーなのかは関係ない。
+ * この契約を挟むことで、ui / scene が具象クラスに縛られず、
+ * テストでも状態を直接差し込める。
+ */
+export interface FlightStateSource {
+  readonly flight: FlightState;
+}
+
 export function createFlightState(
   overrides: Partial<FlightState> = {},
 ): FlightState {

@@ -61,6 +61,8 @@ export class Lighting implements System {
     this.sun.dispose();
     this.ambient.dispose();
     this.sun.removeFromParent();
+    // target も init でシーンに足しているので、一緒に外さないと孤児として残る
+    this.sun.target.removeFromParent();
     this.ambient.removeFromParent();
   }
 }

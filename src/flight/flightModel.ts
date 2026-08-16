@@ -34,13 +34,18 @@ export function stepFlight(
   const rollIn = clamp(input.roll, -1, 1);
 
   // --- 1. 姿勢 ---
+  // 水平へ戻す力は「入力を離している度合い」に比例させる。倒し切っている間は
+  // 戻す力が 0 になり、バンク角を維持して旋回し続けられる。
+  //
+  // 「入力がちょうど 0 の時だけ戻す」としないのは、スティックが 0.005 のような
+  // 微小値で止まった瞬間に復帰が完全に止まり、バンクが溜まって戻らなくなるため。
+  // キーボードは 0 か 1 しか返さないので、この式でも挙動は変わらない。
   let roll = state.roll + rollIn * tuning.rollRate * dt;
-  // 入力中は戻さない。倒し切ったバンク角を維持できないと旋回し続けられない
-  if (rollIn === 0) roll = damp(roll, 0, tuning.rollReturn, dt);
+  roll = damp(roll, 0, tuning.rollReturn * (1 - Math.abs(rollIn)), dt);
   roll = clamp(roll, -tuning.maxRoll, tuning.maxRoll);
 
   let pitch = state.pitch + pitchIn * tuning.pitchRate * dt;
-  if (pitchIn === 0) pitch = damp(pitch, 0, tuning.pitchReturn, dt);
+  pitch = damp(pitch, 0, tuning.pitchReturn * (1 - Math.abs(pitchIn)), dt);
 
   // --- 2. 揚力不足による機首下げ ---
   // 巡航速度に届いていない割合をそのまま「沈み具合」として使う。
@@ -78,6 +83,11 @@ export function stepFlight(
   if (y < tuning.minAltitude) {
     y = tuning.minAltitude;
     if (pitch < 0) pitch = 0;
+  } else if (y > tuning.maxAltitude) {
+    // 天井。羽ばたき + ブーストを機首上げで押し続けると加速項が減速項を上回り、
+    // 際限なく上昇できてしまう。霧に溶けて上下が分からなくなる高さの手前で止める。
+    y = tuning.maxAltitude;
+    if (pitch > 0) pitch = 0;
   }
 
   const flapHz = input.flap ? tuning.flapHz : tuning.glideHz;

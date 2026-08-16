@@ -1,6 +1,6 @@
 import type { System } from "../core/System";
+import type { FlightStateSource } from "../flight/FlightState";
 import { DEFAULT_TUNING, type FlightTuning } from "../flight/tuning";
-import type { Bird } from "../scene/Bird";
 import type { Hud } from "./Hud";
 
 /**
@@ -14,7 +14,7 @@ export class FlightHud implements System {
   readonly name = "flight-hud";
 
   constructor(
-    private readonly bird: Bird,
+    private readonly target: FlightStateSource,
     private readonly hud: Hud,
     private readonly tuning: FlightTuning = DEFAULT_TUNING,
   ) {}
@@ -29,7 +29,7 @@ export class FlightHud implements System {
   }
 
   private write(): void {
-    const { speed, position, stalling } = this.bird.flight;
+    const { speed, position, stalling } = this.target.flight;
     const warning = stalling
       ? `  ⚠ 失速 (${this.tuning.stallSpeed} 未満)`
       : "";

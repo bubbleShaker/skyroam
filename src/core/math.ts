@@ -1,7 +1,10 @@
 /** 汎用の数値ユーティリティ。three に依存しない */
 
 export function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
+  // 非有限値では、レンジ内で最も 0 に近い値へ倒す。
+  // min を返すと -1..1 のような対称レンジで「フルに倒し切った入力」になり、
+  // 異常値が一番危険な操作に化ける。
+  if (!Number.isFinite(value)) return Math.min(Math.max(0, min), max);
   return Math.min(Math.max(value, min), max);
 }
 

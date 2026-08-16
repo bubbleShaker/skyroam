@@ -1,3 +1,4 @@
+import type { System } from "../core/System";
 import type { FlightInput, InputSource } from "../flight/FlightInput";
 import { NEUTRAL_INPUT } from "../flight/FlightInput";
 
@@ -17,8 +18,13 @@ function strongest(a: number, b: number): number {
  * 左に倒しながらタッチで右に倒した時に打ち消し合って 0 になり、
  * 「押しているのに効かない」という一番不快な挙動になる。
  * 触っていない側は 0 を返すので、この規則なら常に操作中の側が勝つ。
+ *
+ * System も実装しているのは、イベントリスナと DOM の破棄を Game の
+ * ライフサイクルに乗せるため（毎フレームの更新は持たない）。利用者である
+ * Bird に dispose させると、生成は main.ts・破棄は Bird という非対称な
+ * 所有権になり、将来 UI などが同じ入力源を共有した時に他人の分まで殺す。
  */
-export class CompositeInput implements InputSource {
+export class CompositeInput implements InputSource, System {
   readonly name = "composite";
 
   private readonly sources: readonly InputSource[];

@@ -25,6 +25,8 @@ export class TouchInput implements InputSource {
   private flapHeld = false;
   private boostHeld = false;
   private visible = false;
+  /** ボタンごとのリスナ解除処理。createButton が積む */
+  private readonly cleanups: Array<() => void> = [];
 
   constructor(private readonly container: HTMLElement = document.body) {
     this.root = document.createElement("div");
@@ -80,6 +82,8 @@ export class TouchInput implements InputSource {
     this.stickBase.removeEventListener("pointermove", this.handleStickMove);
     this.stickBase.removeEventListener("pointerup", this.handleStickUp);
     this.stickBase.removeEventListener("pointercancel", this.handleStickUp);
+    for (const cleanup of this.cleanups) cleanup();
+    this.cleanups.length = 0;
     this.root.remove();
   }
 
@@ -105,15 +109,22 @@ export class TouchInput implements InputSource {
     button.setAttribute("aria-label", label);
     button.textContent = label;
 
+    // 押している指を数える。1 本目を離した時点で解除すると、2 本指で押している
+    // 間に片方を離しただけで羽ばたきが止まってしまう。
+    const active = new Set<number>();
+
     const press = (event: PointerEvent): void => {
       event.preventDefault();
       // 指がボタンの外へ滑っても離した瞬間を受け取れるようにする。
       // これが無いと、押したまま指をずらして離した時にボタンが押しっぱなしになる。
       button.setPointerCapture(event.pointerId);
+      active.add(event.pointerId);
       button.classList.add("is-held");
       setHeld(true);
     };
-    const release = (): void => {
+    const release = (event: PointerEvent): void => {
+      active.delete(event.pointerId);
+      if (active.size > 0) return;
       button.classList.remove("is-held");
       setHeld(false);
     };
@@ -121,6 +132,13 @@ export class TouchInput implements InputSource {
     button.addEventListener("pointerdown", press);
     button.addEventListener("pointerup", release);
     button.addEventListener("pointercancel", release);
+    // スティック側と揃えて明示的に外す（要素ごと消えるので実害は無いが、
+    // 片方だけ解除しない非対称は後から読む人を迷わせる）
+    this.cleanups.push(() => {
+      button.removeEventListener("pointerdown", press);
+      button.removeEventListener("pointerup", release);
+      button.removeEventListener("pointercancel", release);
+    });
     return button;
   }
 
@@ -153,8 +171,9 @@ export class TouchInput implements InputSource {
    */
   private updateStick(event: PointerEvent): void {
     const rect = this.stickBase.getBoundingClientRect();
-    const radius = rect.width / 2;
-    const dx = event.clientX - (rect.left + radius);
+    // 円形の UI なので短い辺を半径に採る。縦横が食い違っても軸ごとに歪まない
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
 
     this.reading = readStick(dx, dy, radius);

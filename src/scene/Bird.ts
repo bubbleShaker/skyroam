@@ -1,7 +1,11 @@
 import type { FrameContext, InitContext, System } from "../core/System";
 import type { InputSource } from "../flight/FlightInput";
 import { stepFlight } from "../flight/flightModel";
-import { createFlightState, type FlightState } from "../flight/FlightState";
+import {
+  createFlightState,
+  type FlightState,
+  type FlightStateSource,
+} from "../flight/FlightState";
 import { DEFAULT_TUNING, type FlightTuning } from "../flight/tuning";
 import { BirdMesh } from "./BirdMesh";
 
@@ -13,10 +17,10 @@ import { BirdMesh } from "./BirdMesh";
  * tuning.ts、見た目は BirdMesh にある。ここにあるのは「入力を読む → モデルを
  * 1 ステップ進める → 描画用オブジェクトに反映する」という繋ぎ込みだけ。
  *
- * 入力源の寿命は Bird が持つ（Bird が唯一の利用者なので、破棄漏れを防ぐには
- * ここで面倒を見るのが確実）。
+ * 入力源は読むだけで、破棄はしない。入力源自身が System として Game に
+ * 登録されており、寿命は Game が持つ。
  */
-export class Bird implements System {
+export class Bird implements System, FlightStateSource {
   readonly name = "bird";
 
   private state: FlightState;
@@ -54,7 +58,6 @@ export class Bird implements System {
   }
 
   dispose(): void {
-    this.input.dispose?.();
     this.birdMesh.dispose();
   }
 

@@ -39,6 +39,8 @@ export interface FlightTuning {
   readonly stallPitchRate: number;
   /** これより下へは降りられない高度 (m)。着地は M4 で実装する */
   readonly minAltitude: number;
+  /** これより上へは昇れない高度 (m)。霧に溶けて上下が分からなくなる手前に置く */
+  readonly maxAltitude: number;
   /** 羽ばたき中の羽ばたき周波数 (Hz) */
   readonly flapHz: number;
   /** 滑空中に翼がゆっくり動く周波数 (Hz) */
@@ -64,6 +66,9 @@ export const DEFAULT_TUNING: FlightTuning = {
   maxSpeed: 220,
   stallPitchRate: 0.9,
   minAltitude: 2,
+  // main.ts の fogFar (GROUND_SIZE * 0.5 = 4000) より下。
+  // 霧より上へ出ると地面が完全に溶けて、自分が上下どちらを向いているか分からなくなる
+  maxAltitude: 3_000,
   flapHz: 2.5,
   glideHz: 0.25,
 };

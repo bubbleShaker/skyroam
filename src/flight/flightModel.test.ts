@@ -61,6 +61,18 @@ describe("stepFlight — 入力と姿勢", () => {
     const released = advance(banked, {}, 3);
     expect(Math.abs(released.roll)).toBeLessThan(Math.abs(banked.roll) * 0.2);
   });
+
+  it("スティックが微小値で止まっていても水平へ戻る", () => {
+    // 入力ちょうど 0 の時だけ戻す実装だと、ここでバンクが溜まって戻らなくなる
+    const banked = advance(createFlightState(), { roll: 1 }, 2);
+    const drifting = advance(banked, { roll: 0.005 }, 5);
+    expect(Math.abs(drifting.roll)).toBeLessThan(Math.abs(banked.roll) * 0.3);
+  });
+
+  it("倒し込みを維持している間はバンク角が保たれる（旋回し続けられる）", () => {
+    const held = advance(createFlightState(), { roll: 1 }, 5);
+    expect(held.roll).toBeCloseTo(DEFAULT_TUNING.maxRoll, 2);
+  });
 });
 
 describe("stepFlight — 速度", () => {
@@ -149,6 +161,16 @@ describe("stepFlight — 高度と位置", () => {
     const low = createFlightState({ position: { x: 0, y: 20, z: 0 } });
     const crashed = advance(low, { pitch: -1 }, 10);
     expect(crashed.position.y).toBeGreaterThanOrEqual(DEFAULT_TUNING.minAltitude);
+  });
+
+  it("天井より上へは昇れない（霧に溶けて上下が分からなくなるのを防ぐ）", () => {
+    // 羽ばたき + ブーストを機首上げで押し続けると、加速項が減速項を上回る
+    const climbing = advance(
+      createFlightState(),
+      { pitch: 1, flap: true, boost: true },
+      180,
+    );
+    expect(climbing.position.y).toBeLessThanOrEqual(DEFAULT_TUNING.maxAltitude);
   });
 });
 
