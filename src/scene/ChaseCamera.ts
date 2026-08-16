@@ -34,7 +34,7 @@ export const DEFAULT_CHASE_CAMERA: ChaseCameraOptions = {
  * 鳥の背後を、バネのように遅れて追う三人称カメラ。
  *
  * `update` で動かしているのは、System の約束事に従うため。
- * 「カメラを動かす側は update、カメラに追従する側 (Sky / Ground) は lateUpdate」
+ * 「カメラを動かす側は update、カメラに追従する側 (Sky / Terrain) は lateUpdate」
  * と分けることで、追従が 1 フレーム遅れない。
  * そのため main.ts では Bird より後、かつ update フェーズに登録する。
  *

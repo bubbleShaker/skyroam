@@ -66,9 +66,19 @@ export const DEFAULT_TUNING: FlightTuning = {
   maxSpeed: 220,
   stallPitchRate: 0.9,
   minAltitude: 2,
-  // main.ts の fogFar (GROUND_SIZE * 0.5 = 4000) より下。
-  // 霧より上へ出ると地面が完全に溶けて、自分が上下どちらを向いているか分からなくなる
-  maxAltitude: 3_000,
+  // 上限を決めるのは「真下の地面がどれだけ霧に溶けるか」。溶けきると
+  // 自分が上下どちらを向いているか分からなくなる。
+  //
+  // 見るべきは fogFar との大小ではなく**混合率** (alt - fogNear) / (fogFar - fogNear) で、
+  // 霧が線形だからこの一次式になる。品質プリセットで体感が変わらないよう、
+  // 視程の狭いモバイル (near 480 / far 9,600) を基準にする。
+  //
+  //   M1 が出荷していた 3,000m (near 800 / far 4,000) … 0.688
+  //   この 6,000m をモバイルで                      … 0.605
+  //
+  // つまり視程を広げた分、高度を倍にしても M1 より溶けない。
+  // この関係は visibility.ts と対になっており、Terrain.test.ts が固定している。
+  maxAltitude: 6_000,
   flapHz: 2.5,
   glideHz: 0.25,
 };
