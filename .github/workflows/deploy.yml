@@ -1,0 +1,55 @@
+name: CI / Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # PR の時点でテストとビルドを回す。main にマージしてから
+  # 公開サイトが壊れる形で失敗に気づく、という事態を防ぐ
+  pull_request:
+  workflow_dispatch:
+
+# 既定は読み取りのみ。Pages への書き込み権限は deploy ジョブにだけ与える
+# （npm ci でサードパーティのスクリプトが走る build ジョブに OIDC トークンを渡さない）
+permissions:
+  contents: read
+
+concurrency:
+  # 進行中の本番デプロイを中断させないため cancel-in-progress は false
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    # PR ビルドでは公開しない
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
