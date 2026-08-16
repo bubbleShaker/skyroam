@@ -9,7 +9,9 @@ import { Bird } from "./scene/Bird";
 import { ChaseCamera } from "./scene/ChaseCamera";
 import { Hud } from "./ui/Hud";
 import { FlightHud } from "./ui/FlightHud";
+import { LocationHud } from "./ui/LocationHud";
 import { ControlsOverlay } from "./ui/ControlsOverlay";
+import { EAST_ASIA_LAND } from "./world/eastAsia";
 
 function boot(hudElement: HTMLElement): void {
   const canvas = document.querySelector<HTMLCanvasElement>("#app");
@@ -18,7 +20,7 @@ function boot(hudElement: HTMLElement): void {
   const game = new Game(canvas);
 
   const hud = new Hud(hudElement);
-  hud.set("build", `skyroam M1 (${game.quality.tier})`);
+  hud.set("build", `skyroam M2 (${game.quality.tier})`);
 
   // キーボードとタッチを常に両方生かす。端末で分岐しないので、
   // タッチ対応ノート PC でもスマホ + キーボードでも両方の操作が効く。
@@ -46,6 +48,8 @@ function boot(hudElement: HTMLElement): void {
     .add(bird)
     .add(new ChaseCamera(bird))
     .add(new FlightHud(bird, hud))
+    // ワールド原点は東京駅。鳥の初期位置 (0, 300, 0) はその真上にあたる
+    .add(new LocationHud(bird, EAST_ASIA_LAND, hud))
     .add(hud)
     .add(new ControlsOverlay());
 
