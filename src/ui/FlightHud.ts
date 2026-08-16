@@ -1,0 +1,39 @@
+import type { System } from "../core/System";
+import { DEFAULT_TUNING, type FlightTuning } from "../flight/tuning";
+import type { Bird } from "../scene/Bird";
+import type { Hud } from "./Hud";
+
+/**
+ * 鳥の状態を HUD の行に流し込むだけの System。
+ *
+ * Hud（表示の器）と Bird（飛行）の間に挟むことで、Hud は何を表示するか知らず、
+ * Bird は UI を知らないままでいられる。M7 で緯度経度や国名を出す時も、
+ * 同じように専用の System を足すだけで済む。
+ */
+export class FlightHud implements System {
+  readonly name = "flight-hud";
+
+  constructor(
+    private readonly bird: Bird,
+    private readonly hud: Hud,
+    private readonly tuning: FlightTuning = DEFAULT_TUNING,
+  ) {}
+
+  /** 行の並び順は Hud への登録順で決まるので、最初に確定させておく */
+  init(): void {
+    this.write();
+  }
+
+  update(): void {
+    this.write();
+  }
+
+  private write(): void {
+    const { speed, position, stalling } = this.bird.flight;
+    const warning = stalling
+      ? `  ⚠ 失速 (${this.tuning.stallSpeed} 未満)`
+      : "";
+    this.hud.set("speed", `${speed.toFixed(0)} m/s${warning}`);
+    this.hud.set("alt", `${Math.round(position.y)} m`);
+  }
+}

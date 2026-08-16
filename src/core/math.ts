@@ -20,8 +20,16 @@ export function damp(
   rate: number,
   dt: number,
 ): number {
-  if (!(dt > 0) || rate <= 0) return current;
-  return current + (target - current) * (1 - Math.exp(-rate * dt));
+  return current + (target - current) * dampFactor(rate, dt);
+}
+
+/**
+ * damp と同じ考え方の補間係数だけを返す。
+ * three の Vector3.lerp のように「係数を受け取る API」に渡すために分けてある。
+ */
+export function dampFactor(rate: number, dt: number): number {
+  if (!(dt > 0) || rate <= 0) return 0;
+  return 1 - Math.exp(-rate * dt);
 }
 
 /** 度をラジアンに変換する */
