@@ -80,7 +80,9 @@ export function stepFlight(
 
   // 地面より下へは行かせない。着地とモード遷移は M4 で実装するので、
   // ここでは地面すれすれを水平に滑る形にとどめる。
-  if (y < tuning.minAltitude) {
+  // 条件を否定形で書くのは、y が NaN の時に両方の比較が false になって
+  // クランプを素通りしてしまうのを防ぐため（NaN なら地面側へ倒す）。
+  if (!(y > tuning.minAltitude)) {
     y = tuning.minAltitude;
     if (pitch < 0) pitch = 0;
   } else if (y > tuning.maxAltitude) {

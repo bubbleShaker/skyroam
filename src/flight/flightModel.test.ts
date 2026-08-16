@@ -42,12 +42,19 @@ describe("stepFlight — 入力と姿勢", () => {
     expect(down.pitch).toBeLessThan(0);
   });
 
-  it("機首の上下は限界角を超えない（真上・真下を向かせない）", () => {
-    const high = createFlightState({ position: { x: 0, y: 90_000, z: 0 } });
-    const up = advance(createFlightState(), { pitch: 1, flap: true }, 20);
-    const down = advance(high, { pitch: -1 }, 20);
-    expect(up.pitch).toBeLessThanOrEqual(DEFAULT_TUNING.maxPitch);
-    expect(down.pitch).toBeGreaterThanOrEqual(-DEFAULT_TUNING.maxPitch);
+  it("機首の上下は限界角ちょうどで頭打ちになる（真上・真下を向かせない）", () => {
+    // 地面にも天井にも触れない高度と時間で測る。どちらかに触れると
+    // クランプ側が pitch を 0 にしてしまい、限界角の検証にならない。
+    const mid = createFlightState({ position: { x: 0, y: 1_500, z: 0 } });
+    const up = advance(mid, { pitch: 1, flap: true }, 3);
+    const down = advance(mid, { pitch: -1, flap: true }, 3);
+
+    // 「超えない」ではなく「ちょうど到達する」を要求する。
+    // 不等号だけだと pitch が 0 に潰れていても通ってしまう。
+    expect(up.pitch).toBeCloseTo(DEFAULT_TUNING.maxPitch, 5);
+    expect(down.pitch).toBeCloseTo(-DEFAULT_TUNING.maxPitch, 5);
+    expect(up.position.y).toBeLessThan(DEFAULT_TUNING.maxAltitude);
+    expect(down.position.y).toBeGreaterThan(DEFAULT_TUNING.minAltitude);
   });
 
   it("ロール入力でバンクし、限界角を超えない", () => {
@@ -73,6 +80,18 @@ describe("stepFlight — 入力と姿勢", () => {
     const held = advance(createFlightState(), { roll: 1 }, 5);
     expect(held.roll).toBeCloseTo(DEFAULT_TUNING.maxRoll, 2);
   });
+
+  it("アナログ入力では倒し込みに比例したバンク角で釣り合う", () => {
+    // 復帰力を (1 - |入力|) でスケールした結果の仕様。スティックを半分倒せば
+    // 半端なバンクで安定し、倒し切って初めて最大バンクになる。
+    // キーボードは 0 か 1 しか返さないので、この違いはタッチ操作だけに現れる。
+    const half = advance(createFlightState(), { roll: 0.5 }, 10);
+    const full = advance(createFlightState(), { roll: 1 }, 10);
+
+    expect(half.roll).toBeGreaterThan(0.4);
+    expect(half.roll).toBeLessThan(DEFAULT_TUNING.maxRoll * 0.95);
+    expect(full.roll).toBeCloseTo(DEFAULT_TUNING.maxRoll, 2);
+  });
 });
 
 describe("stepFlight — 速度", () => {
@@ -96,10 +115,33 @@ describe("stepFlight — 速度", () => {
     expect(boosted.speed).toBeGreaterThan(flap.speed);
   });
 
-  it("抗力があるので急降下し続けても最高速度を超えない", () => {
-    const high = createFlightState({ position: { x: 0, y: 500_000, z: 0 } });
-    const diving = advance(high, { pitch: -1, flap: true, boost: true }, 120);
+  it("急降下では最高速度まで伸びるが、超えない", () => {
+    const high = createFlightState({
+      position: { x: 0, y: DEFAULT_TUNING.maxAltitude, z: 0 },
+    });
+    const diving = advance(high, { pitch: -1, flap: true, boost: true }, 10);
     expect(diving.speed).toBeLessThanOrEqual(DEFAULT_TUNING.maxSpeed);
+    // 実際に加速したことも要求する。地面に張り付いて速度が落ちた状態でも
+    // 「超えない」だけなら通ってしまう
+    expect(diving.speed).toBeGreaterThan(DEFAULT_TUNING.cruiseSpeed * 2);
+    expect(diving.position.y).toBeGreaterThan(DEFAULT_TUNING.minAltitude);
+  });
+
+  it("終端速度を作っているのは抗力であって、速度クランプではない", () => {
+    // maxSpeed を実質無制限にすると、クランプが壊れていても気づけない状態が消え、
+    // 抗力そのものが速度を頭打ちにしているかを見られる。
+    // 理論値は sqrt(gravity / drag) = sqrt(30 / 6e-4) ≒ 224 m/s。
+    const unclamped = {
+      ...DEFAULT_TUNING,
+      maxSpeed: 1_000_000,
+      maxAltitude: 5_000_000,
+    };
+    let state = createFlightState({ position: { x: 0, y: 4_000_000, z: 0 } });
+    for (let elapsed = 0; elapsed < 120; elapsed += STEP) {
+      state = stepFlight(state, { ...NEUTRAL_INPUT, pitch: -1 }, STEP, unclamped);
+    }
+    expect(state.speed).toBeGreaterThan(200);
+    expect(state.speed).toBeLessThan(250);
   });
 
   it("失速速度を下回ると stalling が立つ", () => {
@@ -170,7 +212,8 @@ describe("stepFlight — 高度と位置", () => {
       { pitch: 1, flap: true, boost: true },
       180,
     );
-    expect(climbing.position.y).toBeLessThanOrEqual(DEFAULT_TUNING.maxAltitude);
+    // 「超えない」だけだと、そもそも上昇しなくても通る
+    expect(climbing.position.y).toBeCloseTo(DEFAULT_TUNING.maxAltitude, 3);
   });
 });
 

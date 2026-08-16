@@ -24,6 +24,9 @@ function spawn(state: Parameters<typeof createFlightState>[0]) {
   const camera = new PerspectiveCamera();
   const bird = new Bird(IDLE_INPUT, state);
   bird.init({ scene, camera });
+  // 前提を明示しておく。Bird が別のものも足すようになったら、
+  // 静かに違うオブジェクトを検証し始めるのではなくここで落ちてほしい
+  expect(scene.children).toHaveLength(1);
   const object = scene.children[0]!;
   object.updateMatrixWorld(true);
   return { bird, object, scene, camera };

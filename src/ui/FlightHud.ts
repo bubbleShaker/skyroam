@@ -30,10 +30,14 @@ export class FlightHud implements System {
 
   private write(): void {
     const { speed, position, stalling } = this.target.flight;
-    const warning = stalling
-      ? `  ⚠ 失速 (${this.tuning.stallSpeed} 未満)`
-      : "";
-    this.hud.set("speed", `${speed.toFixed(0)} m/s${warning}`);
-    this.hud.set("alt", `${Math.round(position.y)} m`);
+
+    const stall = stalling ? `  ⚠ 失速 (${this.tuning.stallSpeed} 未満)` : "";
+    this.hud.set("speed", `${speed.toFixed(0)} m/s${stall}`);
+
+    // 天井に張り付くと、機首上げを入れているのに機首が水平に戻される。
+    // 上空には地面のような手がかりが無いので、何も出さないと
+    // 「操作が効かなくなった」ようにしか見えない。
+    const ceiling = position.y >= this.tuning.maxAltitude ? "  ⚠ 上限高度" : "";
+    this.hud.set("alt", `${Math.round(position.y)} m${ceiling}`);
   }
 }
