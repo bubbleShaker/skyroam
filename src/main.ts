@@ -3,7 +3,8 @@ import { CompositeInput } from "./input/CompositeInput";
 import { KeyboardInput } from "./input/KeyboardInput";
 import { TouchInput } from "./input/TouchInput";
 import { Sky } from "./scene/Sky";
-import { Ground, GROUND_SIZE } from "./scene/Ground";
+import { Terrain } from "./scene/Terrain";
+import { fogRange, skyRadius } from "./scene/visibility";
 import { Lighting } from "./scene/Lighting";
 import { Bird } from "./scene/Bird";
 import { ChaseCamera } from "./scene/ChaseCamera";
@@ -27,24 +28,27 @@ function boot(hudElement: HTMLElement): void {
   const input = new CompositeInput(new KeyboardInput(), new TouchInput());
   const bird = new Bird(input);
 
+  // 霧・空の球・地形の広さは互いに独立に決められない。すべて drawDistance から
+  // 導いて visibility.ts に集約してあるので、ここでは配線するだけ
+  const drawDistance = game.quality.drawDistance;
+  const fog = fogRange(drawDistance);
+
   game
     // 入力源も System として登録する。毎フレームの更新は無いが、
     // イベントリスナと DOM の破棄を Game のライフサイクルに任せられる。
     .add(input)
     .add(
       new Sky({
-        radius: game.quality.drawDistance * 0.9,
-        fogNear: GROUND_SIZE * 0.1,
-        // 地面の端 (GROUND_SIZE/2) までに霧が効き切るようにする。
-        // 描画距離を基準にすると地面の方が先に途切れ、ハードエッジが見える。
-        fogFar: GROUND_SIZE * 0.5,
+        radius: skyRadius(drawDistance),
+        fogNear: fog.near,
+        fogFar: fog.far,
       }),
     )
     .add(new Lighting(game.quality.shadows))
-    .add(new Ground())
+    .add(new Terrain({ drawDistance, land: EAST_ASIA_LAND }))
     // 登録順が意味を持つのはこの 3 つ。Bird が飛行状態を更新し、
     // ChaseCamera がそれを見てカメラを動かし（ここまでが update フェーズ）、
-    // Sky と Ground は lateUpdate で確定後のカメラ位置に追従する。
+    // Sky と Terrain は lateUpdate で確定後のカメラ位置に追従する。
     .add(bird)
     .add(new ChaseCamera(bird))
     .add(new FlightHud(bird, hud))
